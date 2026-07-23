@@ -1,5 +1,5 @@
 """
-Main Window - Giao diện PyQt5 cho ductanTTS
+Main Window - Giao diện PyQt5 cho ductanTTS (Updated with Voice Selection)
 """
 import sys
 import os
@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.tts_engine import TTSEngine
 from core.voice_cloner import VoiceCloner
+from core.voice_presets import VoicePresetsManager
 from core.audio_utils import AudioUtils
 
 
@@ -78,11 +79,12 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ductanTTS - Vietnamese Text-to-Speech with Voice Cloning")
-        self.setGeometry(100, 100, 1000, 700)
+        self.setGeometry(100, 100, 1000, 750)
         
         # Khởi tạo engines
         self.tts_engine = TTSEngine()
         self.voice_cloner = VoiceCloner()
+        self.voice_presets = VoicePresetsManager()
         self.audio_utils = AudioUtils()
         
         # Setup UI
@@ -108,7 +110,7 @@ class MainWindow(QMainWindow):
         # Tab widget
         tabs = QTabWidget()
         tabs.addTab(self.create_tts_tab(), "📝 Text to Speech")
-        tabs.addTab(self.create_voice_clone_tab(), "🎤 Voice Cloning")
+        tabs.addTab(self.create_voice_selection_tab(), "🎤 Chọn & Ghi Âm Giọng")
         tabs.addTab(self.create_about_tab(), "ℹ️ Về Ứng Dụng")
         
         main_layout.addWidget(tabs)
@@ -163,13 +165,24 @@ class MainWindow(QMainWindow):
         widget.setLayout(layout)
         return widget
     
-    def create_voice_clone_tab(self):
-        """Tạo tab Voice Cloning"""
+    def create_voice_selection_tab(self):
+        """Tạo tab Chọn & Ghi Âm Giọng"""
         widget = QWidget()
         layout = QVBoxLayout()
         
-        # Recording section
-        layout.addWidget(QLabel("=== Bước 1: Ghi Âm Giọng của Bạn ==="))
+        # Section 1: Chọn Giọng
+        layout.addWidget(QLabel("=== Bước 1: Chọn Giọng (Preset hoặc Custom) ==="))
+        
+        voice_select_layout = QHBoxLayout()
+        voice_select_layout.addWidget(QLabel("Chọn giọng:"))
+        self.voice_combo = QComboBox()
+        self.refresh_voice_combo()
+        voice_select_layout.addWidget(self.voice_combo)
+        voice_select_layout.addStretch()
+        layout.addLayout(voice_select_layout)
+        
+        # Section 2: Ghi Âm Giọng Custom (Nếu Cần)
+        layout.addWidget(QLabel("=== Bước 2: Ghi Âm Giọng Custom (Tùy Chọn) ==="))
         
         record_layout = QHBoxLayout()
         record_layout.addWidget(QLabel("Thời lượng (giây):"))
@@ -186,47 +199,39 @@ class MainWindow(QMainWindow):
         self.record_btn.clicked.connect(self.on_record_clicked)
         layout.addWidget(self.record_btn)
         
-        # Voice selection
-        layout.addWidget(QLabel("=== Bước 2: Lưu & Chọn Giọng ==="))
-        
-        voice_layout = QHBoxLayout()
-        voice_layout.addWidget(QLabel("Tên giọng:"))
-        self.voice_name = QTextEdit()
-        self.voice_name.setPlaceholderText("my_voice")
-        self.voice_name.setMaximumHeight(30)
-        voice_layout.addWidget(self.voice_name)
+        # Voice name input
+        voice_name_layout = QHBoxLayout()
+        voice_name_layout.addWidget(QLabel("Tên giọng mới:"))
+        self.new_voice_name = QTextEdit()
+        self.new_voice_name.setPlaceholderText("my_voice")
+        self.new_voice_name.setMaximumHeight(30)
+        voice_name_layout.addWidget(self.new_voice_name)
         
         self.save_voice_btn = QPushButton("💾 Lưu Giọng")
         self.save_voice_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; padding: 10px;")
         self.save_voice_btn.clicked.connect(self.on_save_voice_clicked)
-        voice_layout.addWidget(self.save_voice_btn)
-        layout.addLayout(voice_layout)
+        voice_name_layout.addWidget(self.save_voice_btn)
+        layout.addLayout(voice_name_layout)
         
-        # Voice list
-        layout.addWidget(QLabel("Danh sách giọng đã lưu:"))
-        self.voice_list = QListWidget()
-        self.refresh_voice_list()
-        layout.addWidget(self.voice_list)
-        
-        # Clone section
-        layout.addWidget(QLabel("=== Bước 3: Tạo Âm Thanh với Giọng Clone ==="))
+        # Section 3: Tạo Âm Thanh từ Giọng Đã Chọn
+        layout.addWidget(QLabel("=== Bước 3: Tạo Âm Thanh từ Giọng Đã Chọn ==="))
         
         layout.addWidget(QLabel("Nhập văn bản:"))
-        self.clone_text_input = QTextEdit()
-        self.clone_text_input.setPlaceholderText("Nhập văn bản muốn đọc bằng giọng clone...")
-        self.clone_text_input.setMinimumHeight(100)
-        layout.addWidget(self.clone_text_input)
+        self.voice_text_input = QTextEdit()
+        self.voice_text_input.setPlaceholderText("Nhập văn bản muốn đọc...")
+        self.voice_text_input.setMinimumHeight(120)
+        layout.addWidget(self.voice_text_input)
         
-        clone_btn_layout = QHBoxLayout()
-        self.clone_btn = QPushButton("🎵 Tạo Âm Thanh Clone")
-        self.clone_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; padding: 10px;")
-        self.clone_btn.clicked.connect(self.on_clone_clicked)
-        clone_btn_layout.addWidget(self.clone_btn)
-        clone_btn_layout.addStretch()
-        layout.addLayout(clone_btn_layout)
+        create_btn_layout = QHBoxLayout()
+        self.create_voice_btn = QPushButton("🎵 Tạo Âm Thanh")
+        self.create_voice_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; padding: 10px;")
+        self.create_voice_btn.clicked.connect(self.on_create_voice_clicked)
+        create_btn_layout.addWidget(self.create_voice_btn)
+        create_btn_layout.addStretch()
+        layout.addLayout(create_btn_layout)
         
-        self.clone_status = QLabel("")
-        layout.addWidget(self.clone_status)
+        self.voice_status = QLabel("")
+        layout.addWidget(self.voice_status)
         
         layout.addStretch()
         widget.setLayout(layout)
@@ -240,15 +245,15 @@ class MainWindow(QMainWindow):
         about_text = QTextEdit()
         about_text.setReadOnly(True)
         about_text.setText("""
-<h2>ductanTTS v1.0</h2>
-<p><b>Ứng dụng chuyển đổi văn bản thành âm thanh với khả năng clone giọng nói</b></p>
+<h2>ductanTTS v2.0</h2>
+<p><b>Ứng dụng chuyển đổi văn bản thành âm thanh với khả năng chọn giọng đọc</b></p>
 
 <h3>📋 Tính Năng:</h3>
 <ul>
     <li>✅ Chuyển text tiếng Việt → âm thanh</li>
-    <li>✅ Clone/nhân bản giọng nói cá nhân</li>
+    <li>✅ Chọn giọng đọc (Preset hoặc Custom)</li>
+    <li>✅ Ghi âm giọng của bạn</li>
     <li>✅ Hỗ trợ 2 phương thức TTS (Google & Coqui)</li>
-    <li>✅ Ghi âm từ microphone</li>
     <li>✅ Lưu file MP3/WAV</li>
 </ul>
 
@@ -264,14 +269,19 @@ class MainWindow(QMainWindow):
 <h3>📖 Hướng Dẫn Nhanh:</h3>
 <ol>
     <li><b>Text to Speech:</b> Nhập văn bản → Chọn phương thức → Click "Chuyển Đổi"</li>
-    <li><b>Voice Cloning:</b> Ghi âm → Lưu giọng → Tạo âm thanh với giọng clone</li>
+    <li><b>Chọn Giọng:</b> Chọn giọng từ dropdown → Nhập text → Click "Tạo Âm Thanh"</li>
+    <li><b>Ghi Âm Custom:</b> Ghi âm → Đặt tên → Lưu → Chọn từ dropdown</li>
 </ol>
+
+<h3>📁 Cấu Trúc:</h3>
+<ul>
+    <li>voices/presets/ - Giọng mặc định (có sẵn)</li>
+    <li>voices/custom/ - Giọng ghi âm của bạn</li>
+    <li>output/ - File âm thanh đã tạo</li>
+</ul>
 
 <h3>📝 License:</h3>
 <p>MIT License - Tự do sử dụng và phát triển</p>
-
-<h3>👨‍💻 Nhà Phát Triển:</h3>
-<p>Dựa trên ý tưởng của cộng đồng lập trình Python</p>
 
 <hr>
 <p><i>Cảm ơn bạn đã sử dụng ductanTTS! 🎉</i></p>
@@ -281,8 +291,19 @@ class MainWindow(QMainWindow):
         widget.setLayout(layout)
         return widget
     
+    def refresh_voice_combo(self):
+        """Cập nhật dropdown chọn giọng"""
+        self.voice_combo.clear()
+        
+        # Lấy tất cả giọng
+        all_voices = self.voice_presets.get_all_voices()
+        
+        # Thêm vào dropdown
+        for voice_name in all_voices.keys():
+            self.voice_combo.addItem(voice_name)
+    
     def on_convert_clicked(self):
-        """Xử lý khi click nút Convert"""
+        """Xử lý khi click nút Convert (Text to Speech)"""
         text = self.text_input.toPlainText()
         output_name = self.output_name.toPlainText().strip()
         
@@ -344,8 +365,8 @@ class MainWindow(QMainWindow):
     def on_record_success(self, file_path):
         """Xử lý khi ghi âm thành công"""
         self.record_btn.setText("🎤 Bắt Đầu Ghi Âm")
-        QMessageBox.information(self, "Thành Công", f"Ghi âm đã được lưu tại:\n{file_path}")
-        self.voice_cloner.load_voice_sample("current_recording", file_path)
+        self.last_recording_path = file_path
+        QMessageBox.information(self, "Thành Công", f"Ghi âm đã được lưu tại:\n{file_path}\n\nBây giờ đặt tên và lưu giọng!")
     
     def on_record_error(self, error_msg):
         """Xử lý lỗi ghi âm"""
@@ -357,62 +378,69 @@ class MainWindow(QMainWindow):
         self.record_btn.setEnabled(True)
     
     def on_save_voice_clicked(self):
-        """Xử lý lưu giọng nói"""
-        voice_name = self.voice_name.toPlainText().strip()
+        """Xử lý lưu giọng custom"""
+        voice_name = self.new_voice_name.toPlainText().strip()
         
         if not voice_name:
             QMessageBox.warning(self, "Lỗi", "Vui lòng nhập tên giọng!")
             return
         
-        if "current_recording" not in self.voice_cloner.voice_samples:
+        if not hasattr(self, 'last_recording_path'):
             QMessageBox.warning(self, "Lỗi", "Vui lòng ghi âm trước!")
             return
         
-        # Lưu voice sample
-        self.voice_cloner.voice_samples[voice_name] = self.voice_cloner.voice_samples["current_recording"]
-        self.voice_cloner.save_voice_profile(voice_name)
+        # Lưu giọng
+        result = self.voice_presets.add_custom_voice(voice_name, self.last_recording_path)
         
-        QMessageBox.information(self, "Thành Công", f"Giọng nói '{voice_name}' đã được lưu!")
-        self.voice_name.clear()
-        self.refresh_voice_list()
+        if result:
+            QMessageBox.information(self, "Thành Công", f"Giọng '{voice_name}' đã được lưu!")
+            self.new_voice_name.clear()
+            self.refresh_voice_combo()
+        else:
+            QMessageBox.critical(self, "Lỗi", "Không thể lưu giọng!")
     
-    def on_clone_clicked(self):
-        """Xử lý tạo âm thanh clone"""
-        selected_items = self.voice_list.selectedItems()
+    def on_create_voice_clicked(self):
+        """Xử lý tạo âm thanh từ giọng đã chọn"""
+        voice_display_name = self.voice_combo.currentText()
+        text = self.voice_text_input.toPlainText()
         
-        if not selected_items:
-            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn một giọng nói!")
+        if not voice_display_name:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn một giọng!")
             return
-        
-        voice_name = selected_items[0].text()
-        text = self.clone_text_input.toPlainText()
         
         if not text.strip():
             QMessageBox.warning(self, "Lỗi", "Vui lòng nhập văn bản!")
             return
         
-        self.clone_btn.setEnabled(False)
-        self.clone_status.setText("Đang xử lý...")
+        # Lấy đường dẫn giọng
+        voice_path = self.voice_presets.get_voice_path(voice_display_name)
         
-        # Clone voice
-        output_file = f"clone_{voice_name}.mp3"
-        result = self.voice_cloner.clone_voice(voice_name, text, output_file)
+        if not voice_path:
+            QMessageBox.critical(self, "Lỗi", "Không tìm thấy giọng nói!")
+            return
         
-        if result:
-            self.clone_status.setText(f"✅ Thành công! File: {result}")
-            QMessageBox.information(self, "Thành Công", f"File đã được lưu tại:\n{result}")
-        else:
-            self.clone_status.setText("❌ Lỗi khi tạo âm thanh")
-            QMessageBox.critical(self, "Lỗi", "Không thể tạo âm thanh clone!")
+        self.create_voice_btn.setEnabled(False)
+        self.voice_status.setText("Đang xử lý...")
         
-        self.clone_btn.setEnabled(True)
-    
-    def refresh_voice_list(self):
-        """Cập nhật danh sách giọng nói"""
-        self.voice_list.clear()
-        voices = self.voice_cloner.get_voice_samples()
-        for voice in voices:
-            self.voice_list.addItem(QListWidgetItem(voice))
+        try:
+            # Tạo tên file output
+            voice_clean_name = voice_display_name.replace("🎙️ ", "").replace("🔊 ", "").replace(" (Preset)", "").replace(" (Custom)", "")
+            output_file = f"voice_{voice_clean_name}_{len(text)}.mp3"
+            
+            # Sử dụng gTTS để tạo âm thanh
+            result = self.tts_engine.text_to_speech(text, output_file, method='gtts')
+            
+            if result:
+                self.voice_status.setText(f"✅ Thành công! File: {result}")
+                QMessageBox.information(self, "Thành Công", f"File đã được lưu tại:\n{result}")
+            else:
+                self.voice_status.setText("❌ Lỗi khi tạo âm thanh")
+                QMessageBox.critical(self, "Lỗi", "Không thể tạo âm thanh!")
+        except Exception as e:
+            self.voice_status.setText(f"❌ Lỗi: {str(e)}")
+            QMessageBox.critical(self, "Lỗi", f"Không thể tạo âm thanh:\n{str(e)}")
+        finally:
+            self.create_voice_btn.setEnabled(True)
 
 
 def main():
